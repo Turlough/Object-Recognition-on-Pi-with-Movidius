@@ -1,5 +1,10 @@
 #!/usr/bin/python3
-
+'''
+    Object detection from a remote camera stream, to run on a 
+    Movidius Neural Compute Stick.
+    Configurations such as URL of the remote video stream are stored in 
+    utils/camera_config.py.
+'''
 import os
 import cv2
 import sys
@@ -44,7 +49,7 @@ def open_movidius():
 
 # ---- Step 2: Load a graph file onto the NCS device -------------------------
 
-def load_graph( movidius ):
+def load_graph(movidius):
 
     # Read the graph file into a buffer
     with open(GRAPH_FILE, mode='rb') as f:
@@ -57,22 +62,59 @@ def load_graph( movidius ):
 
 # ---- Step 3: Pre-process the images ----------------------------------------
 
-def pre_process_image( frame ):
+def pre_process_image(frame):
 
-    img = cv2.resize(frame, DIMENSIONS).astype( numpy.float16 )
-    img = ( img - numpy.float16(MEAN)) * SCALE
+    img = cv2.resize(frame, DIMENSIONS).astype(numpy.float16)
+    img = (img - numpy.float16(MEAN)) * SCALE
 
     return img
+
+# -------- Publish detections, one subtopic for each label in the current frame
+
+def publish_detctions(num_detections, output_dict, labels):
+    
+    for i in range( 0, num_detections):
+
+        claz = output_dict['detection_classes_%i' % i]
+        label = labels[claz]
+        
+        # Publishes to camera subtopic 'label' (e.g. 'camera/person'), 
+        # with URL of the video stream as payload
+        mosquitto.publish(label, URL)
+
+# ----- Display the image, if X Windows available
+
+def show_image(num_detections, output_dict, frame, labels):
+    
+    for i in range( 0, num_detections):
+
+        box = output_dict['detection_boxes_%i' % i]
+        score = output_dict['detection_scores_%i' % i]
+        claz = output_dict['detection_classes_%i' % i]
+        label = labels[claz]
+        
+        (y1, x1), (y2, x2) = box
+        display_str = ('{}: {}%'.format(label, score ))
+        frame = visualize_output.draw_bounding_box( 
+               y1, x1, y2, x2, 
+               frame,
+               thickness=1,
+               color=(255, 255, 0),
+               display_str=display_str )
+        
+        cv2.imshow( 'Movidius', frame )
+        if( cv2.waitKey(5) & 0xFF == ord('q')):
+            dispose( movidius, graph )
 
 # ---- Step 4: Read & print inference results from the NCS -------------------
 
 def infer_image(movidius, graph, img, frame, labels ):
 
     # Load the image as a half-precision floating point array
-    graph.LoadTensor( img, 'user object' )
+    graph.LoadTensor(img, 'user object')
 
     # Get the results from NCS
-    output, userobj = graph.GetResult()
+    output, _ = graph.GetResult()
 
     # Get execution time
     inference_time = graph.GetGraphOption( mvnc.GraphOption.TIME_TAKEN )
@@ -83,40 +125,19 @@ def infer_image(movidius, graph, img, frame, labels ):
                       CONFIDENCE_THRESHOLD, 
                       frame.shape )
     
-    # Print the results (each image/frame may have multiple objects)
     num_detections = output_dict['num_detections']
-    print( "%i objects identified in %.1f ms" % (num_detections, numpy.sum( inference_time ) ) )
+    # print( "%i objects identified in %.1f ms" % (num_detections, numpy.sum(inference_time)))
 
-    for i in range( 0, num_detections):
+    # publish over mqtt
+    publish_detctions(num_detections, output_dict, labels)
 
-        box = output_dict['detection_boxes_%i' % i]
-        score = output_dict['detection_scores_%i' % i]
-        claz = output_dict['detection_classes_%i' % i]
-        name = labels[claz]
-
-        (y1, x1) = box[0]
-        (y2, x2) = box[1]
-
-        mosquitto.publish(name, URL)
-        
-        display_str = ('{}: {}%'.format(name, score ))
-        frame = visualize_output.draw_bounding_box( 
-               y1, x1, y2, x2, 
-               frame,
-               thickness=1,
-               color=(255, 255, 0),
-               display_str=display_str )
-
-    # If a display is available, show the image on which inference was performed
+    # If a display is available, show the image and results
     if 'DISPLAY' in os.environ:
-        
-        cv2.imshow( 'NCS live inference', frame )
-        if( cv2.waitKey(5) & 0xFF == ord('q')):
-            dispose( movidius, graph )
+        show_image(num_detections, output_dict, frame, labels)
 
 # ---- Step 5: Unload the graph and close the device -------------------------
 
-def dispose(movidius, graph ):
+def dispose(movidius, graph):
     
     graph.DeallocateGraph()
     movidius.CloseDevice()
