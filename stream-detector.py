@@ -84,7 +84,7 @@ def publish_detctions(num_detections, output_dict, labels):
 
 # ----- Display the image, if X Windows available
 
-def show_image(num_detections, output_dict, frame, labels):
+def show_image(num_detections, output_dict, movidius, frame, labels):
     
     for i in range( 0, num_detections):
 
@@ -133,7 +133,7 @@ def infer_image(movidius, graph, img, frame, labels ):
 
     # If a display is available, show the image and results
     if 'DISPLAY' in os.environ:
-        show_image(num_detections, output_dict, frame, labels)
+        show_image(num_detections, output_dict, movidius, frame, labels)
 
 # ---- Step 5: Unload the graph and close the device -------------------------
 
