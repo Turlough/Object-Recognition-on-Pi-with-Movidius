@@ -102,9 +102,9 @@ def show_image(num_detections, output_dict, frame, labels):
                color=(255, 255, 0),
                display_str=display_str )
         
-        cv2.imshow( 'Movidius', frame )
-        if( cv2.waitKey(5) & 0xFF == ord('q')):
-            dispose( movidius, graph )
+    cv2.imshow( 'Movidius', frame)
+    if( cv2.waitKey(5) & 0xFF == ord('q')):
+        dispose( movidius, graph )
 
 # ---- Step 4: Read & print inference results from the NCS -------------------
 
